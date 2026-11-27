@@ -18,12 +18,29 @@ def calcular_metricas(
     Calcula las métricas generales y por clase.
     """
 
-    etiquetas_reales = np.asarray(etiquetas_reales)
-    predicciones = np.asarray(predicciones)
+    etiquetas_reales = np.asarray(etiquetas_reales, dtype=np.int64)
+    predicciones = np.asarray(predicciones, dtype=np.int64)
+    conteos_clases = np.asarray(conteos_clases)
+
+    # Comprobar que los datos son válidos.
+    if len(etiquetas_reales) == 0:
+        raise ValueError("No hay ejemplos para evaluar.")
+
+    if len(etiquetas_reales) != len(predicciones):
+        raise ValueError("Las etiquetas y predicciones tienen distinto tamaño.")
+
+    if len(conteos_clases) != num_classes:
+        raise ValueError("Las frecuencias no coinciden con el número de clases.")
+
+    if np.any(etiquetas_reales < 0) or np.any(etiquetas_reales >= num_classes):
+        raise ValueError("Hay etiquetas reales fuera del rango esperado.")
+
+    if np.any(predicciones < 0) or np.any(predicciones >= num_classes):
+        raise ValueError("Hay predicciones fuera del rango esperado.")
 
     labels = np.arange(num_classes)
 
-    # Calcular precision, recall y F1 de cada clase.
+    # 1. Métricas individuales por clase.
     precision, recall, f1, soporte = (
         precision_recall_fscore_support(
             etiquetas_reales,
@@ -34,7 +51,7 @@ def calcular_metricas(
         )
     )
 
-    # Métricas generales.
+    # 2. Métricas generales.
     accuracy = accuracy_score(
         etiquetas_reales,
         predicciones
@@ -47,7 +64,7 @@ def calcular_metricas(
         weights=soporte
     )
 
-    # Calcular Cohen's Kappa sin matriz de confusión.
+    # 3. Cohen's Kappa.
     frecuencia_real = np.bincount(
         etiquetas_reales,
         minlength=num_classes
@@ -76,22 +93,28 @@ def calcular_metricas(
             1.0 - acuerdo_azar
         )
 
-    # Identificar las clases minoritarias.
-    clases_minoritaria = conteos_clases <= 10
+    # 4. F1 de las clases minoritarias.
+    clases_minoritarias = conteos_clases <= 20
 
-    f1_minoritaria = np.mean(
-        f1[clases_minoritaria]
+    if not np.any(clases_minoritarias):
+        minority_f1 = float("nan")
+    else:
+        minority_f1 = np.mean(f1[clases_minoritarias])
+
+    minority_f1 = np.mean(
+        f1[clases_minoritarias]
     )
 
+    # 5. Guardar métricas generales.
     metricas = {
         "accuracy": float(accuracy),
         "macro_f1": float(macro_f1),
         "weighted_f1": float(weighted_f1),
         "kappa": float(kappa),
-        "minority_f1": float(f1_minoritaria)
+        "minority_f1": float(minority_f1)
     }
 
-    # Resultados detallados por clase.
+    # 6. Guardar resultados individuales por clase.
     resultados_clases = {
         "precision": precision,
         "recall": recall,
@@ -139,7 +162,7 @@ def evaluar_modelo(
             )
 
             etiquetas_reales.extend(
-                labels.numpy().tolist()
+                labels.cpu().numpy().tolist()
             )
 
             predicciones.extend(

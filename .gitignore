@@ -7,40 +7,27 @@ env/
 # Python
 __pycache__/
 *.py[cod]
-*.pyd
-*.egg-info/
-.pytest_cache/
+*.pyo
 
-# Jupyter
-.ipynb_checkpoints/
-
-# Datos del proyecto
-data/
-*.csv
-*.parquet
-*.zip
-*.gz
-
-# Modelos y pesos entrenados
-models/
-*.pt
-*.pth
-*.bin
-*.model
-*.vec
-
-# Resultados generados
-results/
-outputs/
-logs/
+# Archivos temporales
 *.log
-
-# Configuración local y credenciales
-.env
-.env.*
-!.env.example
-
-# Archivos temporales y del sistema
 .DS_Store
 Thumbs.db
-.vscode/
+
+# Datasets
+data/
+
+# Modelos y embeddings generados
+models/
+models_individual/*.npy
+models_individual/*.model
+models_individual/*.model.*
+models_individual/*.pt
+
+# Resultados experimentales
+results/
+results_individual/
+
+# Modelos preentrenados y checkpoints
+*.bin
+*.ckpt

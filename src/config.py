@@ -14,9 +14,9 @@ MODELS_DIR = BASE_DIR / "models"
 RESULTS_DIR = BASE_DIR / "results"
 
 # Archivos del dataset
-TRAIN_PATH = DATA_DIR / "train_preparado.parquet"
-VALID_PATH = DATA_DIR / "valid_preparado.parquet"
-TEST_PATH = DATA_DIR / "test_preparado.parquet"
+TRAIN_PATH = DATA_DIR / "train_clases.parquet"
+VALID_PATH = DATA_DIR / "valid_clases.parquet"
+TEST_PATH = DATA_DIR / "test_clases.parquet"
 
 # Modelo fastText (todavía no descargado)
 FASTTEXT_PATH = MODELS_DIR / "cc.en.300.bin"
@@ -90,11 +90,11 @@ EXPERIMENTS = [
 # 6. TAMAÑOS ESPERADOS DEL DATASET
 # =====================================================
 
-EXPECTED_TRAIN_SIZE = 3_000_000
-EXPECTED_VALID_SIZE = 999_950
-EXPECTED_TEST_SIZE = 999_956
+EXPECTED_TRAIN_SIZE = 43_732
+EXPECTED_VALID_SIZE = 14_586
+EXPECTED_TEST_SIZE = 14_583
 
-EXPECTED_NUM_CLASSES = 22_555
+EXPECTED_NUM_CLASSES = 500
 
 # =====================================================
 # 7. CONFIGURACIÓN DEL VOCABULARIO
@@ -105,7 +105,7 @@ MAX_VOCAB_SIZE = 100_000
 PAD_TOKEN = "<PAD>"
 UNK_TOKEN = "<UNK>"
 
-VOCAB_PATH = MODELS_DIR / "vocabulario.pkl"
+VOCAB_PATH = MODELS_DIR / "vocabulario_subconjunto.pkl"
 
 # =====================================================
 # 8. MATRIZ DE EMBEDDINGS

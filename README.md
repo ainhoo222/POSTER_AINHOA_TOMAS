@@ -1,145 +1,527 @@
 # Baseline común: BiLSTM + fastText
 
-## 1. Descripción
+# Clasificación supervisada de abreviaturas médicas: BiLSTM + fastText
 
-La baseline común del proyecto aborda la desambiguación de abreviaturas médicas mediante un modelo de clasificación supervisada basado en una red neuronal recurrente **BiLSTM (Bidirectional Long Short-Term Memory)** y representaciones vectoriales de palabras obtenidas mediante **fastText**.
+## 1. Descripción del proyecto
+
+Este proyecto implementa un sistema de clasificación supervisada para la desambiguación de abreviaturas médicas mediante una arquitectura neuronal **BiLSTM (Bidirectional Long Short-Term Memory)** y representaciones vectoriales de palabras obtenidas mediante **fastText**.
 
 El objetivo es clasificar cada aparición de una abreviatura médica según su significado, utilizando el contexto textual en el que aparece.
 
-El problema se plantea como una tarea de clasificación multiclase con 500 clases correspondientes a los distintos significados de las abreviaturas.
+El problema se plantea como una tarea de clasificación multiclase con 500 clases.
+
+La implementación permite estudiar cuatro experimentos:
+
+| Experimento | Descripción |
+|---|---|
+| `baseline` | BiLSTM con embeddings fastText congelados. |
+| `finetuning` | BiLSTM permitiendo actualizar los embeddings durante el entrenamiento. |
+| `attention` | BiLSTM incorporando un mecanismo de atención. |
+| `weighted_loss` | BiLSTM utilizando una función de pérdida ponderada según la frecuencia de las clases. |
 
 ## 2. Estructura del proyecto
 
-La implementación común se encuentra en la carpeta `src/`:
+La implementación se encuentra en la carpeta `src/`:
 
 ```text
-src/
-├── config.py
-├── datos.py
-├── preparacion.py
-├── dataset.py
-├── embeddings.py
-├── modelo.py
-├── entrenamiento.py
-├── evaluacion.py
-└── pesos_clases.py
+POSTER_AINHOA_TOMAS/
+│
+├── data/
+│   ├── train_clases.parquet
+│   ├── valid_clases.parquet
+│   └── test_clases.parquet
+│
+├── models/
+│   ├── cc.en.300.bin
+│   ├── vocabulario_subconjunto.pkl
+│   ├── embeddings_fasttext.npy
+│   ├── class_counts.npy
+│   └── class_weights.npy
+│
+├── results/
+│
+├── src/
+│   ├── config.py
+│   ├── datos.py
+│   ├── vocabulario.py
+│   ├── preparacion.py
+│   ├── embeddings.py
+│   ├── dataset.py
+│   ├── modelo.py
+│   ├── entrenamiento.py
+│   ├── evaluacion.py
+│   └── pesos_clases.py
+│
+├── requirements.txt
+└── README.md
 ```
 
-Los datos, vocabularios, modelos y resultados se almacenan en sus respectivas carpetas:
+Las carpetas `models/` y `results/` se generan durante la ejecución cuando no existen.
+
+## 3. Requisitos previos
+
+### 3.1. Software necesario
+
+- Python 3.
+- Git.
+- Windows, Linux o macOS.
+- Conexión a Internet para descargar el modelo preentrenado de fastText.
+
+### 3.2. Clonar el repositorio
+
+Desde una terminal, ejecutar:
+
+```bash
+git clone https://github.com/ainhoo222/POSTER_AINHOA_TOMAS.git
+```
+
+Entrar en la carpeta del proyecto:
+
+```bash
+cd POSTER_AINHOA_TOMAS
+```
+
+### 3.3. Crear y activar el entorno virtual
+
+En Windows (PowerShell):
+
+```powershell
+py -m venv .venv
+```
+
+Activar el entorno:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+En Linux o macOS:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+Actualizar pip:
+
+```bash
+python -m pip install --upgrade pip
+```
+
+### 3.4. Instalar las dependencias
+
+Instalar las dependencias del archivo `requirements.txt`:
+
+```bash
+pip install -r requirements.txt
+```
+
+Además, instalar PyTorch y fastText, que son necesarios para la arquitectura y la generación de embeddings:
+
+Para PyTorch con CPU:
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+```
+
+Para fastText:
+
+```bash
+pip install fasttext-wheel
+```
+
+Las principales bibliotecas utilizadas son:
+
+- NumPy.
+- Pandas.
+- PyArrow.
+- Scikit-learn.
+- PyTorch.
+- fastText.
+- tqdm.
+
+Comprobar que las bibliotecas principales se han instalado correctamente:
+
+```bash
+python -c "import numpy, pandas, pyarrow, sklearn, torch, fasttext; print('Entorno preparado correctamente')"
+```
+
+## 4. Preparación de los datos
+
+Antes de generar los modelos es necesario disponer de los tres conjuntos de datos en formato Parquet.
+
+Los archivos deben encontrarse en la carpeta `data/` y tener exactamente los siguientes nombres:
+
+| Archivo | Utilización |
+|---|---|
+| `train_clases.parquet` | Entrenamiento del modelo y generación del vocabulario y las frecuencias de las clases. |
+| `valid_clases.parquet` | Selección del mejor modelo durante el entrenamiento. |
+| `test_clases.parquet` | Evaluación final del modelo. |
+
+Los tres archivos deben contener las siguientes columnas:
+
+- `ABSTRACT_ID`: identificador del abstract.
+- `TEXT`: texto del contexto médico.
+- `LOCATION`: posición de la abreviatura dentro del texto.
+- `LABEL`: significado correspondiente a la abreviatura.
+
+La posición `LOCATION` se interpreta como un índice basado en cero sobre las palabras obtenidas mediante `TEXT.split()`.
+
+**Importante:** los tres conjuntos de datos deben estar preparados antes de continuar. Los scripts de entrenamiento no generan estos archivos Parquet.
+
+## 5. Descarga del modelo preentrenado fastText
+
+El proyecto utiliza el modelo preentrenado `cc.en.300.bin`, correspondiente a fastText en inglés, con vectores de 300 dimensiones entrenados sobre Common Crawl.
+
+El modelo original puede descargarse desde:
+
+https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.en.300.bin.gz
+
+Es necesario descargar el archivo comprimido, descomprimirlo y colocar el archivo `cc.en.300.bin` dentro de `models/`.
+
+En Windows PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force models
+
+Invoke-WebRequest `
+    -Uri "https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.en.300.bin.gz" `
+    -OutFile "models/cc.en.300.bin.gz"
+```
+
+Descomprimir:
+
+```powershell
+tar -xzf models/cc.en.300.bin.gz -C models
+```
+
+Una vez terminado, la estructura debe contener:
 
 ```text
-data/
 models/
-results/
+└── cc.en.300.bin
 ```
 
-## 3. Preparación de los datos
+El archivo binario es de gran tamaño, por lo que no es necesario incluirlo en el repositorio GitHub. Cada usuario puede descargarlo desde la fuente original.
 
-Se utilizan los conjuntos de entrenamiento, validación y test generados previamente:
+## 6. Generación de los recursos necesarios para el entrenamiento
 
-| Conjunto | Registros |
-|---|---:|
-| Entrenamiento | 43.732 |
-| Validación | 14.586 |
-| Test | 14.583 |
-| **Total** | **72.901** |
+Una vez preparados los datos y descargado fastText, es necesario ejecutar tres módulos en un orden determinado.
 
-El problema contiene 500 clases.
+Todos los comandos deben ejecutarse desde la carpeta principal del proyecto, con el entorno virtual activado.
 
-Para cada ejemplo se construye una secuencia de contexto de hasta 257 posiciones, considerando un máximo de 128 palabras a cada lado de la abreviatura objetivo.
+### 6.1. Generar el vocabulario
 
-Las palabras se convierten en identificadores numéricos mediante un vocabulario previamente generado. Las secuencias se completan mediante padding cuando es necesario.
+Ejecutar:
 
-## 4. Representación de palabras: fastText
+```bash
+python -m src.vocabulario
+```
 
-Se utiliza el modelo preentrenado `cc.en.300.bin` de fastText para obtener representaciones vectoriales de las palabras.
+Este módulo procesa el conjunto de entrenamiento y construye dos diccionarios:
 
-Las características principales son:
+- `word_to_id`: asigna un identificador numérico a cada palabra.
+- `label_to_id`: asigna un identificador numérico a cada clase.
 
-- Dimensión de los embeddings: 300.
-- Modelo preentrenado de fastText.
-- Representaciones densas de palabras.
-- Embeddings congelados durante el entrenamiento de la baseline.
+Se seleccionan las palabras más frecuentes, con un máximo de 100.000 palabras, y se incorporan las abreviaturas que no estén incluidas.
 
-Estas representaciones permiten incorporar información semántica y características de las palabras en la clasificación.
+También se añaden los tokens especiales `<PAD>` y `<UNK>`.
 
-## 5. Arquitectura BiLSTM
+El vocabulario se genera exclusivamente utilizando el conjunto de entrenamiento para evitar introducir información de validación o test.
 
-El clasificador utiliza una red neuronal recurrente bidireccional para procesar el contexto de la abreviatura.
+**Archivo generado:**
 
-La arquitectura está formada por:
+```text
+models/vocabulario_subconjunto.pkl
+```
 
-1. Una capa de embeddings fastText de 300 dimensiones.
-2. Una capa BiLSTM bidireccional con tamaño oculto de 256.
-3. Dropout del 30 %.
-4. Una capa de clasificación que produce 500 salidas, una por cada clase.
+### 6.2. Generar la matriz de embeddings fastText
 
-La red procesa el contexto en ambas direcciones, permitiendo utilizar información tanto anterior como posterior a la abreviatura.
+Una vez creado el vocabulario, ejecutar:
 
-El entrenamiento se realiza mediante la función de pérdida CrossEntropyLoss.
+```bash
+python -m src.embeddings
+```
 
-## 6. Configuración del entrenamiento
+Este módulo realiza las siguientes operaciones:
 
-La configuración de la baseline es:
+1. Carga el vocabulario generado anteriormente.
+2. Carga el modelo preentrenado `cc.en.300.bin`.
+3. Obtiene el vector fastText correspondiente a cada palabra.
+4. Genera una matriz de embeddings alineada con los identificadores del vocabulario.
+5. Guarda la matriz en formato NumPy.
 
-- Semilla: 42.
-- Optimizador: AdamW.
-- Learning rate: 0.001.
-- Weight decay: 0.01.
-- Batch size: 64.
-- Número máximo de épocas: 10.
-- Early stopping: paciencia de 2 épocas.
-- Dispositivo: CPU.
+Los embeddings tienen una dimensión de 300. Para palabras que no aparecen directamente en el vocabulario de fastText se utilizan las subpalabras para generar sus representaciones.
 
-El mejor modelo se selecciona según el Macro-F1 obtenido sobre el conjunto de validación. Posteriormente, se recupera ese modelo y se realiza la evaluación final sobre el conjunto de test.
+Los tokens `<PAD>` y `<UNK>` mantienen vectores de ceros.
 
-## 7. Métricas de evaluación
+**Archivo generado:**
 
-Se utilizan las siguientes métricas para evaluar el rendimiento:
+```text
+models/embeddings_fasttext.npy
+```
 
-- Accuracy: proporción de predicciones correctas.
-- Macro-F1: media del F1 de todas las clases, dando el mismo peso a cada una.
-- Weighted-F1: media del F1 ponderada por el número de ejemplos de cada clase.
-- Cohen's Kappa: mide el acuerdo entre las predicciones y las etiquetas reales, teniendo en cuenta el acuerdo esperado por azar.
-- Minority-F1: F1 medio de las clases con 20 ejemplos o menos en entrenamiento, cuando existen clases que cumplen ese criterio.
+Esta matriz se utilizará posteriormente como capa de embeddings de la arquitectura BiLSTM.
 
-También se generan resultados individuales por clase con precisión, recall, F1 y soporte.
+### 6.3. Calcular las frecuencias y los pesos de las clases
 
-## 8. Ejecución
+Ejecutar:
 
-Desde la carpeta principal del proyecto, con el entorno virtual activado:
+```bash
+python -m src.pesos_clases
+```
 
-**Entrenar la baseline:**
+Este módulo recorre el conjunto de entrenamiento y calcula el número de ejemplos pertenecientes a cada clase.
+
+Posteriormente, calcula los pesos mediante la fórmula:
+
+\[
+w_i = \frac{1}{\sqrt{n_i}}
+\]
+
+Donde \(n_i\) representa el número de ejemplos de la clase \(i\).
+
+Los pesos se normalizan para que su media sea igual a 1.
+
+Se generan dos archivos:
+
+```text
+models/
+├── class_counts.npy
+└── class_weights.npy
+```
+
+- `class_counts.npy`: contiene las frecuencias de las clases. Se utiliza durante la evaluación para identificar las clases minoritarias.
+- `class_weights.npy`: contiene los pesos calculados para cada clase. Se utiliza en el experimento `weighted_loss`.
+
+## 7. Comprobaciones antes del entrenamiento
+
+Antes de iniciar los experimentos es recomendable comprobar que los datos, los recursos generados y la arquitectura funcionan correctamente.
+
+### 7.1. Comprobar el entorno
+
+```bash
+python Comprobar_entorno.py
+```
+
+Este script verifica la importación de las principales bibliotecas utilizadas en el proyecto.
+
+### 7.2. Comprobar los conjuntos de datos
+
+```bash
+python -m src.datos
+```
+
+Se comprueba que los tres archivos Parquet existen, se muestra su número de registros y se inspecciona una pequeña muestra de cada conjunto.
+
+### 7.3. Comprobar la codificación de los registros
+
+```bash
+python -m src.preparacion
+```
+
+Se comprueba que los textos pueden convertirse correctamente en secuencias de identificadores numéricos.
+
+Se verifica la ventana contextual, la posición de la abreviatura y el identificador de su clase.
+
+### 7.4. Comprobar el DataLoader
+
+```bash
+python probar_dataset.py
+```
+
+Este script comprueba que el DataLoader puede leer los datos y generar lotes correctamente.
+
+### 7.5. Comprobar el entrenamiento del modelo
+
+```bash
+python probar_entrenamiento.py
+```
+
+Se ejecuta un paso de entrenamiento de prueba con un lote pequeño para comprobar que:
+
+- Los datos llegan correctamente al modelo.
+- La arquitectura produce las predicciones.
+- Se calcula la función de pérdida.
+- Se pueden calcular los gradientes y actualizar los parámetros.
+
+Esta prueba no realiza el entrenamiento completo.
+
+## 8. Ejecución del entrenamiento
+
+Una vez generados todos los recursos y realizadas las comprobaciones, se puede iniciar el entrenamiento.
+
+El módulo principal es:
+
+```text
+src/entrenamiento.py
+```
+
+Su ejecución sigue el siguiente formato:
+
+```bash
+python -u -m src.entrenamiento <experimento> <semilla>
+```
+
+El primer argumento indica el experimento y el segundo la semilla aleatoria.
+
+### 8.1. Entrenar la baseline
 
 ```bash
 python -u -m src.entrenamiento baseline 42
 ```
 
-El comando ejecuta el entrenamiento con la configuración baseline y la semilla 42.
+### 8.2. Entrenar con fine-tuning
 
-Los resultados se guardan en la carpeta `results/`, mientras que los modelos y recursos utilizados se almacenan en `models/`.
+```bash
+python -u -m src.entrenamiento finetuning 42
+```
 
-## 9. Resultados de referencia
+### 8.3. Entrenar con atención
 
-En la ejecución de referencia de la baseline se obtuvieron los siguientes resultados sobre el conjunto de test:
+```bash
+python -u -m src.entrenamiento attention 42
+```
 
-| Métrica | Resultado |
-|---|---:|
-| Accuracy | 0.9915 |
-| Macro-F1 | 0.9847 |
-| Weighted-F1 | 0.9911 |
-| Cohen's Kappa | 0.9915 |
-| Mejor época | 7 |
+### 8.4. Entrenar con pérdida ponderada
 
-La métrica Minority-F1 no estuvo disponible en esta ejecución porque ninguna clase cumplía el criterio de tener 20 ejemplos o menos en entrenamiento.
+```bash
+python -u -m src.entrenamiento weighted_loss 42
+```
 
-Estos resultados constituyen la referencia para comparar las mejoras y alternativas implementadas posteriormente.
+También pueden repetirse los experimentos utilizando una segunda semilla:
 
-## 10. Relación con la implementación individual
+```bash
+python -u -m src.entrenamiento baseline 43
+python -u -m src.entrenamiento finetuning 43
+python -u -m src.entrenamiento attention 43
+python -u -m src.entrenamiento weighted_loss 43
+```
 
-Esta baseline constituye el punto de partida del proyecto. La implementación individual desarrolla una arquitectura alternativa basada en Word2Vec + CNN.
+El parámetro `-u` permite mostrar los mensajes de progreso durante la ejecución sin esperar al almacenamiento en búfer de la salida.
 
-Ambas aproximaciones utilizan las mismas particiones de datos y las mismas métricas generales de evaluación, permitiendo comparar sus resultados bajo condiciones experimentales equivalentes.
+## 9. Configuración del entrenamiento
+
+La configuración se encuentra centralizada en `src/config.py`.
+
+| Parámetro | Valor |
+|---|---|
+| Arquitectura | BiLSTM |
+| Dimensión de embeddings | 300 |
+| Tamaño oculto | 256 |
+| Número de capas LSTM | 1 |
+| Dropout | 0.3 |
+| Longitud máxima de secuencia | 257 |
+| Radio contextual | 128 |
+| Número de clases | 500 |
+| Optimizador | AdamW |
+| Learning rate | 0.001 |
+| Weight decay | 0.01 |
+| Batch size | 64 |
+| Épocas máximas | 10 |
+| Early stopping | Paciencia de 2 épocas |
+| Dispositivo | CPU |
+
+La ventana contextual contiene hasta 128 palabras anteriores a la abreviatura, la propia abreviatura y hasta 128 palabras posteriores.
+
+Durante cada época se realiza el entrenamiento sobre el conjunto de entrenamiento y se evalúa el rendimiento sobre validación.
+
+La selección del mejor modelo se realiza utilizando el Macro-F1 de validación. Si no se obtiene una mejora durante dos épocas consecutivas, se activa el mecanismo de Early Stopping.
+
+Una vez finalizado el entrenamiento, se recupera el mejor checkpoint y se realiza la evaluación final sobre el conjunto de test.
+
+## 10. Resultados generados
+
+Los resultados se almacenan automáticamente en la carpeta `results/`.
+
+Para cada experimento y semilla se generan los siguientes archivos:
+
+```text
+results/
+├── baseline_seed42_best.pt
+├── baseline_seed42.json
+├── baseline_seed42_clases.csv
+├── baseline_seed42_historial.csv
+│
+├── finetuning_seed42_best.pt
+├── finetuning_seed42.json
+├── finetuning_seed42_clases.csv
+├── finetuning_seed42_historial.csv
+│
+├── attention_seed42_best.pt
+├── attention_seed42.json
+├── attention_seed42_clases.csv
+├── attention_seed42_historial.csv
+│
+└── weighted_loss_seed42_best.pt
+    ├── weighted_loss_seed42.json
+    ├── weighted_loss_seed42_clases.csv
+    └── weighted_loss_seed42_historial.csv
+```
+
+Los archivos contienen:
+
+- **Checkpoint (`.pt`)**: pesos del mejor modelo, experimento, semilla y época seleccionada.
+- **Resultados generales (`.json`)**: métricas finales y configuración de la ejecución.
+- **Resultados por clase (`_clases.csv`)**: precisión, recall, F1, soporte y número de ejemplos de entrenamiento de cada clase.
+- **Historial (`_historial.csv`)**: evolución de la pérdida de entrenamiento y de las métricas de validación durante las épocas.
+
+### Métricas de evaluación
+
+Se calculan las siguientes métricas:
+
+- Accuracy.
+- Macro-F1.
+- Weighted-F1.
+- Cohen's Kappa.
+- Minority-F1.
+
+También se calculan precisión, recall y F1 individualmente para cada clase.
+
+Minority-F1 corresponde al F1 medio de las clases que tienen 20 ejemplos o menos en el conjunto de entrenamiento.
+
+## 11. Consideraciones importantes
+
+1. Es necesario disponer de los tres archivos Parquet antes de iniciar el entrenamiento.
+2. El vocabulario debe generarse antes que la matriz de embeddings y los pesos de las clases.
+3. Si se modifica o regenera el vocabulario, también deben regenerarse los embeddings y los pesos de las clases para mantener la correspondencia entre identificadores.
+4. Todos los experimentos utilizan las mismas particiones de entrenamiento, validación y test.
+5. Los resultados se guardan automáticamente y no es necesario crearlos manualmente.
+6. Los archivos grandes de datos, el modelo fastText y los recursos generados deben estar disponibles localmente, aunque no estén incluidos en el repositorio GitHub.
+
+## 12. Resumen del orden de ejecución
+
+Para reproducir el entrenamiento desde cero, seguir este orden:
+
+```bash
+# 1. Instalar dependencias
+pip install -r requirements.txt
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install fasttext-wheel
+
+# 2. Comprobar los datos
+python -m src.datos
+
+# 3. Generar el vocabulario
+python -m src.vocabulario
+
+# 4. Generar los embeddings fastText
+python -m src.embeddings
+
+# 5. Calcular las frecuencias y pesos de las clases
+python -m src.pesos_clases
+
+# 6. Comprobar el entorno y los recursos
+python Comprobar_entorno.py
+python -m src.preparacion
+python probar_dataset.py
+python probar_entrenamiento.py
+
+# 7. Ejecutar el experimentos
+python -u -m src.entrenamiento baseline 42
+```
+
+Una vez completados estos pasos, el proyecto habrá generado los modelos entrenados y sus correspondientes resultados experimentales.
 
 # Baseline individual: Word2Vec + CNN
 
